@@ -46,11 +46,11 @@ func listHelpers() (Helpers, string) {
 		logrus.WithField("keychain", "SecretService").Warn("Keychain is not available.")
 	}
 
-	if _, err := execabs.LookPath("pass"); err == nil && isUsable(newPassHelper("")) {
-		helpers[Pass] = newPassHelper
-	} else {
-		logrus.WithField("keychain", "Pass").Warn("Keychain is not available.")
-	}
+	//if _, err := execabs.LookPath("pass"); err == nil && isUsable(newPassHelper("")) {
+	//helpers[Pass] = newPassHelper
+	//} else {
+	//logrus.WithField("keychain", "Pass").Warn("Keychain is not available.")
+	//}
 
 	defaultHelper := SecretServiceDBus
 
