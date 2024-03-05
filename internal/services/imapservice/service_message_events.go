@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -130,6 +130,7 @@ func onMessageCreated(
 	s.log.WithFields(logrus.Fields{
 		"messageID": message.ID,
 		"subject":   logging.Sensitive(message.Subject),
+		"date":      message.Time,
 	}).Info("Handling message created event")
 
 	full, err := s.client.GetFullMessage(ctx, message.ID, usertypes.NewProtonAPIScheduler(s.panicHandler), proton.NewDefaultAttachmentAllocator())

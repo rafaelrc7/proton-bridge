@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -52,10 +52,7 @@ func numberOfDay(now, prev time.Time) int {
 		return 1
 	}
 	if now.Year() > prev.Year() {
-		if now.YearDay() > prev.YearDay() {
-			return 365 + (now.YearDay() - prev.YearDay())
-		}
-		return (prev.YearDay() + now.YearDay()) - 365
+		return (365 * (now.Year() - prev.Year())) + now.YearDay() - prev.YearDay()
 	} else if now.YearDay() > prev.YearDay() {
 		return now.YearDay() - prev.YearDay()
 	}

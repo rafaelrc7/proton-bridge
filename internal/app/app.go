@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/ProtonMail/gluon/async"
@@ -43,6 +44,7 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/keychain"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/restarter"
+	"github.com/elastic/go-sysinfo"
 	"github.com/pkg/profile"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -236,7 +238,7 @@ func run(c *cli.Context) error {
 
 						return withSingleInstance(settings, locations.GetLockFile(), version, func() error {
 							// Look for available keychains
-							return WithKeychainList(func(keychains *keychain.List) error {
+							return WithKeychainList(crashHandler, func(keychains *keychain.List) error {
 								// Unlock the encrypted vault.
 								return WithVault(locations, keychains, crashHandler, func(v *vault.Vault, insecure, corrupt bool) error {
 									if !v.Migrated() {
@@ -371,6 +373,24 @@ func withLogging(c *cli.Context, crashHandler *crash.Handler, locations *locatio
 		WithField("SentryID", sentry.GetProtectedHostname()).
 		Info("Run app")
 
+	now := time.Now()
+	logrus.
+		WithField("timeZone", now.Format("MST")).
+		WithField("offset", now.Format("-07:00:00")).
+		Info("Time zone info")
+
+	host, err := sysinfo.Host()
+	if err != nil {
+		logrus.WithError(err).Error("Could not retrieve operating system info")
+	} else {
+		osInfo := host.Info().OS
+		logrus.
+			WithField("name", osInfo.Name).
+			WithField("version", osInfo.Version).
+			WithField("build", osInfo.Build).
+			Info("Operating system info")
+	}
+
 	return fn(closer)
 }
 
@@ -482,9 +502,10 @@ func withCookieJar(vault *vault.Vault, fn func(http.CookieJar) error) error {
 }
 
 // WithKeychainList init the list of usable keychains.
-func WithKeychainList(fn func(*keychain.List) error) error {
+func WithKeychainList(panicHandler async.PanicHandler, fn func(*keychain.List) error) error {
 	logrus.Debug("Creating keychain list")
 	defer logrus.Debug("Keychain list stop")
+	defer async.HandlePanic(panicHandler)
 	return fn(keychain.NewList())
 }
 

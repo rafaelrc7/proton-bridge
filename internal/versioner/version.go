@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -30,6 +30,7 @@ import (
 )
 
 const sumFile = ".sum"
+const sigFile = ".sig"
 
 type Version struct {
 	version *semver.Version
@@ -83,7 +84,7 @@ func VerifyUpdateFolder(kr *crypto.KeyRing, path string) error {
 		return err
 	}
 
-	sigBytes, err := os.ReadFile(filepath.Join(path, sumFile+".sig")) //nolint:gosec
+	sigBytes, err := os.ReadFile(filepath.Join(path, sumFile+sigFile)) //nolint:gosec
 	if err != nil {
 		return err
 	}

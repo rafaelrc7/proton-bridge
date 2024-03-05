@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -36,14 +36,16 @@ func listHelpers() (Helpers, string) {
 
 	if isUsable(newDBusHelper("")) {
 		helpers[SecretServiceDBus] = newDBusHelper
+		logrus.WithField("keychain", "SecretServiceDBus").Info("Keychain is usable.")
 	} else {
-		logrus.WithField("keychain", "SecretServiceDBus").Warn("Keychain is not available.")
+		logrus.WithField("keychain", "SecretServiceDBus").Debug("Keychain is not available.")
 	}
 
 	if _, err := execabs.LookPath("gnome-keyring"); err == nil && isUsable(newSecretServiceHelper("")) {
 		helpers[SecretService] = newSecretServiceHelper
+		logrus.WithField("keychain", "SecretService").Info("Keychain is usable.")
 	} else {
-		logrus.WithField("keychain", "SecretService").Warn("Keychain is not available.")
+		logrus.WithField("keychain", "SecretService").Debug("Keychain is not available.")
 	}
 
 	//if _, err := execabs.LookPath("pass"); err == nil && isUsable(newPassHelper("")) {

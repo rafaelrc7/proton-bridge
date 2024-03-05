@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -66,7 +66,7 @@ func makeDummyVersionDirectory(t *testing.T, exeName, updates, version string) s
 	require.NoError(t, exe.Close())
 	require.NoError(t, os.Chmod(exe.Name(), 0o700))
 
-	sig, err := os.Create(filepath.Join(target, getExeName(exeName)+".sig"))
+	sig, err := os.Create(filepath.Join(target, getExeName(exeName)+sigFile))
 	require.NoError(t, err)
 	require.NotNil(t, sig)
 	require.NoError(t, sig.Close())

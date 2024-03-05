@@ -4,15 +4,17 @@
 lint:
   stage: test
   extends:
+    - .image-linux-test
     - .rules-branch-manual-br-tag-and-MR-and-devel-always
   script:
     - make lint
   tags:
     - shared-medium
 
-bug-report-preview:
+lint-bug-report-preview:
   stage: test
   extends:
+    - .image-linux-test
     - .rules-branch-and-MR-manual
   script:
     - make lint-bug-report-preview
@@ -31,13 +33,25 @@ bug-report-preview:
 
 test-linux:
   extends:
+    - .image-linux-test
     - .script-test
   tags:
     - shared-large
 
+test-windows:
+  extends:
+    - .env-windows
+    - .script-test
+
+test-darwin:
+  extends:
+    - .env-darwin
+    - .script-test
+
 fuzz-linux:
   stage: test
   extends:
+    - .image-linux-test
     - .rules-branch-manual-MR-and-devel-always
   script:
     - make fuzz
@@ -55,14 +69,23 @@ test-integration:
   extends:
     - test-linux
   script:
-    - make test-integration
+    - make test-integration | tee -a integration-job.log
+  artifacts:
+    when: always
+    paths:
+      - integration-job.log
 
 test-integration-race:
   extends:
     - test-integration
     - .rules-branch-and-MR-manual
   script:
-    - make test-integration-race
+    - make test-integration-race | tee -a integration-race-job.log
+  artifacts:
+    when: always
+    paths:
+      - integration-race-job.log
+
 
 test-integration-nightly:
   extends:
@@ -77,19 +100,10 @@ test-integration-nightly:
     paths:
       - nightly-job.log
 
-test-windows:
-  extends:
-    - .env-windows
-    - .script-test
-
-test-darwin:
-  extends:
-    - .env-darwin
-    - .script-test
-
 test-coverage:
   stage: test
   extends:
+    - .image-linux-test
     - .rules-branch-manual-scheduled-and-test-branch-always
   script:
     - ./utils/coverage.sh
@@ -114,12 +128,12 @@ test-coverage:
 
 go-vuln-check:
   extends:
+    - .image-linux-test
     - .rules-branch-manual-MR-and-devel-always
   stage: test
   tags:
     - shared-medium
   script:
-    - apt-get -y install jq
     - ./utils/govulncheck.sh
   artifacts:
     when: always

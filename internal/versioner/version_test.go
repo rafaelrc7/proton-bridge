@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Proton AG
+// Copyright (c) 2024 Proton AG
 //
 // This file is part of Proton Mail Bridge.
 //
@@ -136,5 +136,5 @@ func signFile(t *testing.T, path string, kr *crypto.KeyRing) {
 
 	sig, err := kr.SignDetached(crypto.NewPlainMessage(file))
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path+".sig", sig.GetBinary(), 0o700))
+	require.NoError(t, os.WriteFile(path+sigFile, sig.GetBinary(), 0o700))
 }
