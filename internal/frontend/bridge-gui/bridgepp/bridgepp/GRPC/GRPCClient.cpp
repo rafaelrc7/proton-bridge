@@ -1206,6 +1206,17 @@ void GRPCClient::processAppEvent(AppEvent const &event) {
         this->logTrace("App event received: AllUsersLoaded");
         emit allUsersLoaded();
         break;
+    case AppEvent::kUserNotification: {
+        this->logTrace("App event received: UserNotification");
+        UserNotification notification{
+                .title = QString::fromStdString(event.usernotification().title()),
+                .subtitle = QString::fromStdString(event.usernotification().subtitle()),
+                .body = QString::fromStdString(event.usernotification().body()),
+                .userID = QString::fromStdString(event.usernotification().userid()),
+        };
+        emit userNotificationReceived(notification);
+        break;
+    }
     default:
         this->logError("Unknown App event received.");
     }
@@ -1561,32 +1572,6 @@ UPClientContext GRPCClient::clientContext() const {
     return ctx;
 }
 
-//****************************************************************************************************************************************************
-/// \return the status for the gRPC call.
-//****************************************************************************************************************************************************
-grpc::Status GRPCClient::reportBugClicked() {
-    return this->logGRPCCallStatus(stub_->ReportBugClicked(this->clientContext().get(), empty, &empty), __FUNCTION__);
-}
-
-//****************************************************************************************************************************************************
-/// \param[in] client The client string.
-/// \return the status for the gRPC call.
-//****************************************************************************************************************************************************
-grpc::Status GRPCClient::autoconfigClicked(QString const &client) {
-    StringValue s;
-    s.set_value(client.toStdString());
-    return this->logGRPCCallStatus(stub_->AutoconfigClicked(this->clientContext().get(), s, &empty), __FUNCTION__);
-}
-
-//****************************************************************************************************************************************************
-/// \param[in] link The clicked link.
-/// \return the status for the gRPC call.
-//****************************************************************************************************************************************************
-grpc::Status GRPCClient::externalLinkClicked(QString const &link) {
-    StringValue s;
-    s.set_value(link.toStdString());
-    return this->logGRPCCallStatus(stub_->ExternalLinkClicked(this->clientContext().get(), s, &empty), __FUNCTION__);
-}
 
 //****************************************************************************************************************************************************
 //

@@ -98,11 +98,6 @@ service Bridge {
   rpc RemoveUser(google.protobuf.StringValue) returns (google.protobuf.Empty);
   rpc ConfigureUserAppleMail(ConfigureAppleMailRequest) returns (google.protobuf.Empty);
 
-  // Telemetry
-  rpc ReportBugClicked(google.protobuf.Empty) returns (google.protobuf.Empty);
-  rpc AutoconfigClicked(google.protobuf.StringValue) returns (google.protobuf.Empty);
-  rpc ExternalLinkClicked(google.protobuf.StringValue) returns (google.protobuf.Empty);
-
   // TLS certificate related calls
   rpc IsTLSCertificateInstalled(google.protobuf.Empty) returns (google.protobuf.BoolValue);
   rpc InstallTLSCertificate(google.protobuf.Empty) returns (google.protobuf.Empty);
@@ -277,6 +272,7 @@ message AppEvent {
     KnowledgeBaseSuggestionsEvent knowledgeBaseSuggestions = 12;
     RepairStartedEvent repairStarted = 13;
     AllUsersLoadedEvent allUsersLoaded = 14;
+    UserNotificationEvent userNotification = 15;
   }
 }
 
@@ -544,6 +540,14 @@ message SyncProgressEvent {
   int64 elapsedMs = 3;
   int64 remainingMs = 4;
 }
+
+message UserNotificationEvent {
+  string title = 1;
+  string subtitle = 2;
+  string body = 3;
+  string userID = 4;
+}
+
 
 //**********************************************************
 // Generic errors

@@ -172,6 +172,8 @@ FocusScope {
 
     implicitHeight: children[0].implicitHeight
     implicitWidth: children[0].implicitWidth
+    Accessible.role: Accessible.Grouping
+    Accessible.name: label.text
 
     onEditingFinished: {
         if (!validateOnEditingFinished) {
@@ -274,6 +276,7 @@ FocusScope {
                     selectionColor: control.palette.highlight
                     topPadding: 8
                     verticalAlignment: TextInput.AlignVCenter
+                    Accessible.name: label.text + qsTr(" edit")
 
                     background: Item {
                         implicitHeight: 36
@@ -331,6 +334,15 @@ FocusScope {
                         x: control.leftPadding
                         y: control.topPadding
                     }
+
+                    Proton.ContextMenu {
+                        parentObject: control
+                        colorScheme: root.colorScheme
+                        isPassword: control.echoMode === TextInput.Password
+                        readOnly: control.readOnly
+                    }
+
+
                 }
                 Proton.Button {
                     id: eyeButton
@@ -340,6 +352,7 @@ FocusScope {
                     icon.color: control.color
                     icon.source: checked ? "../icons/ic-eye-slash.svg" : "../icons/ic-eye.svg"
                     visible: root.echoMode === TextInput.Password
+                    Accessible.name: label.text + qsTr(" show check")
                 }
             }
         }

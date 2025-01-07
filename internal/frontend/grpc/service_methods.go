@@ -30,6 +30,7 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/frontend/theme"
+	"github.com/ProtonMail/proton-bridge/v3/internal/hv"
 	"github.com/ProtonMail/proton-bridge/v3/internal/kb"
 	"github.com/ProtonMail/proton-bridge/v3/internal/safe"
 	"github.com/ProtonMail/proton-bridge/v3/internal/service"
@@ -110,10 +111,11 @@ func (s *Service) GuiReady(_ context.Context, _ *emptypb.Empty) (*GuiReadyRespon
 func (s *Service) Quit(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
 	defer async.HandlePanic(s.panicHandler)
 	s.log.Debug("Quit")
-	return &emptypb.Empty{}, s.quit()
+	s.quit()
+	return &emptypb.Empty{}, nil
 }
 
-func (s *Service) quit() error {
+func (s *Service) quit() {
 	// Windows is notably slow at Quitting. We do it in a goroutine to speed things up a bit.
 	go func() {
 		defer async.HandlePanic(s.panicHandler)
@@ -132,8 +134,6 @@ func (s *Service) quit() error {
 		// The following call is launched as a goroutine, as it will wait for current calls to end, including this one.
 		s.grpcServer.GracefulStop() // gRPC does clean up and remove the file socket if used.
 	}()
-
-	return nil
 }
 
 // Restart implement the Restart gRPC service call.
@@ -469,7 +469,7 @@ func (s *Service) Login(_ context.Context, login *LoginRequest) (*emptypb.Empty,
 
 				case proton.HumanValidationInvalidToken:
 					s.hvDetails = nil
-					_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, err.Error()))
+					_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, hv.VerificationFailedErrorMsg))
 
 				default:
 					_ = s.SendEvent(NewLoginError(LoginErrorType_USERNAME_PASSWORD_ERROR, err.Error()))
@@ -718,8 +718,8 @@ func (s *Service) MailServerSettings(_ context.Context, _ *emptypb.Empty) (*Imap
 		state:         protoimpl.MessageState{},
 		sizeCache:     0,
 		unknownFields: nil,
-		ImapPort:      int32(s.bridge.GetIMAPPort()),
-		SmtpPort:      int32(s.bridge.GetSMTPPort()),
+		ImapPort:      int32(s.bridge.GetIMAPPort()), //nolint:gosec // disable G115
+		SmtpPort:      int32(s.bridge.GetSMTPPort()), //nolint:gosec // disable G115
 		UseSSLForImap: s.bridge.GetIMAPSSL(),
 		UseSSLForSmtp: s.bridge.GetSMTPSSL(),
 	}, nil
@@ -865,8 +865,8 @@ func base64Decode(in []byte) ([]byte, error) {
 
 func (s *Service) getMailServerSettings() *ImapSmtpSettings {
 	return &ImapSmtpSettings{
-		ImapPort:      int32(s.bridge.GetIMAPPort()),
-		SmtpPort:      int32(s.bridge.GetSMTPPort()),
+		ImapPort:      int32(s.bridge.GetIMAPPort()), //nolint:gosec // disable G115
+		SmtpPort:      int32(s.bridge.GetSMTPPort()), //nolint:gosec // disable G115
 		UseSSLForImap: s.bridge.GetIMAPSSL(),
 		UseSSLForSmtp: s.bridge.GetSMTPSSL(),
 	}

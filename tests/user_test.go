@@ -22,12 +22,16 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ProtonMail/gluon/rfc822"
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	"github.com/ProtonMail/proton-bridge/v3/internal/services/notifications"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/algo"
 	"github.com/bradenaw/juniper/iterator"
@@ -315,7 +319,7 @@ func (s *scenario) drafAtIndexWasMovedToTrashForAddressOfAccount(draftIndex int,
 	defer cancel()
 
 	return s.t.withClient(ctx, username, func(ctx context.Context, c *proton.Client) error {
-		return s.t.withAddrKR(ctx, c, username, s.t.getUserByName(username).getAddrID(address), func(_ context.Context, addrKR *crypto.KeyRing) error {
+		return s.t.withAddrKR(ctx, c, username, s.t.getUserByName(username).getAddrID(address), func(_ context.Context, _ *crypto.KeyRing) error {
 			if err := c.UnlabelMessages(ctx, []string{draftID}, proton.DraftsLabel); err != nil {
 				return fmt.Errorf("failed to unlabel draft")
 			}
@@ -384,6 +388,70 @@ func (s *scenario) userLogsOut(username string) error {
 
 func (s *scenario) userIsDeleted(username string) error {
 	return s.t.bridge.DeleteUser(context.Background(), s.t.getUserByName(username).getUserID())
+}
+
+func (s *scenario) userIsDeletedAndImapDataRemoved(username string) error {
+	gluonCacheDir := s.t.bridge.GetGluonCacheDir()
+	userID := s.t.getUserByName(username).userID
+	userMap := s.t.bridge.GetUsers()
+	userObj, ok := userMap[userID]
+	if !ok {
+		return fmt.Errorf("could not find user object")
+	}
+
+	gluonIDMap := userObj.GetGluonIDs()
+	gluonIDs := make([]string, 0, len(gluonIDMap))
+	for _, id := range gluonIDMap {
+		gluonIDs = append(gluonIDs, id)
+	}
+
+	var relevantPaths []string
+	if err := filepath.Walk(gluonCacheDir, func(path string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		for _, gluonID := range gluonIDs {
+			if strings.Contains(path, gluonID) {
+				relevantPaths = append(relevantPaths, path)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if len(relevantPaths) == 0 {
+		return fmt.Errorf("found no user related gluon paths")
+	}
+
+	if err := s.t.bridge.DeleteUser(context.Background(), userID); err != nil {
+		return fmt.Errorf("could not delete user: %w", err)
+	}
+
+	foundDeferredDelete := false
+	var remainingPaths []string
+	if err := filepath.Walk(gluonCacheDir, func(path string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		for _, gluonID := range gluonIDs {
+			if strings.Contains(path, gluonID) {
+				remainingPaths = append(remainingPaths, path)
+			}
+		}
+		if strings.Contains(path, "deferred_delete") {
+			foundDeferredDelete = true
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if len(remainingPaths) == 0 && foundDeferredDelete {
+		return nil
+	}
+
+	return fmt.Errorf("user gluon data is still present or could not find deferred deletion directory")
 }
 
 func (s *scenario) theAuthOfUserIsRevoked(username string) error {
@@ -689,4 +757,25 @@ func matchSettings(have proton.MailSettings, want MailSettings) error {
 	}
 
 	return nil
+}
+
+func (s *scenario) userRemoteNotificationMetricTest(username string, metricName string) error {
+	var metricToTest proton.ObservabilityMetric
+	switch strings.ToLower(metricName) {
+	case "processed":
+		metricToTest = notifications.GenerateProcessedMetric(1)
+	case "received":
+		metricToTest = notifications.GenerateReceivedMetric(1)
+	default:
+		return fmt.Errorf("invalid metric name specified")
+	}
+
+	// Account for endpoint throttle
+	time.Sleep(time.Second * 5)
+
+	return s.t.withClientPass(context.Background(), username, s.t.getUserByName(username).userPass, func(ctx context.Context, c *proton.Client) error {
+		batch := proton.ObservabilityBatch{Metrics: []proton.ObservabilityMetric{metricToTest}}
+		err := c.SendObservabilityBatch(ctx, batch)
+		return err
+	})
 }

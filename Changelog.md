@@ -3,6 +3,81 @@
 Changelog [format](http://keepachangelog.com/en/1.0.0/)
 
 
+## Flavien Bridge 3.16.0
+
+### Added
+* BRIDGE-205: Add support for the IMAP AUTHENTICATE command.
+* BRIDGE-268: Add kill switch feature flag for the IMAP AUTHENTICATE command.
+* BRIDGE-261: Delete gluon data during user deletion.
+* BRIDGE-246: Test: Add Settings Menu Bridge UI e2e automation tests.
+
+### Changed
+* BRIDGE-107: Improved human verification UX.
+* BRIDGE-281: Disable keychain test on macOS.
+* BRIDGE-266: Heartbeat telemetry update.
+* BRIDGE-253: Removed unused telemetry (activation and troubleshooting).
+* BRIDGE-252: Restored the -h shortcut for the CLI --help switch.
+* BRIDGE-264: Ignore apple notes as UserAgent.
+
+### Fixed
+* BRIDGE-256: Fix reversed order of headers with multiple values.
+* BRIDGE-258: Fixed issue with draft updates and sending during synchronization.
+
+
+## Erasmus Bridge 3.15.0
+
+### Added
+* BRIDGE-238: Added host information to sentry events; new sentry event for keychain issues.
+* BRIDGE-236: Added SMTP observability metrics.
+* BRIDGE-217: Added missing parameter to the CLI help command.
+* BRIDGE-234: Add accessibility name in QML for UI automation.
+* BRIDGE-232: Test: Add Home Menu Bridge UI e2e automation tests.
+* BRIDGE-220: Test: Add Bridge E2E UI login/logout tests for Windows.
+
+### Changed
+* BRIDGE-228: Removed sentry events.
+* BRIDGE-218: Observability adapter; gluon observability metrics and tests.
+* BRIDGE-215: Tweak wording on macOS profile install page.
+* BRIDGE-131: Test: Integration tests for messages from Proton <-> Gmail.
+* BRIDGE-142: Bridge icon can be removed from the menu bar on macOS.
+
+### Fixed
+* BRIDGE-240: Fix for running against Qt 6.8 (contribution of GitHub user Cimbali).
+* BRIDGE-231: Fix reversed header order in messages.
+* BRIDGE-235: Fix compilation of Bridge GUI Tester on Windows.
+* BRIDGE-120: Use appropriate address key when importing / saving draft.
+
+
+## Dragon Bridge 3.14.0
+
+### Changed
+* BRIDGE-207: Failure to download or verify an update now fails silently.
+* BRIDGE-204: Removed redundant Sentry events.
+* BRIDGE-150: Observability service modification.
+* BRIDGE-210: Reduced log level of cache events so they won't be printed to stdout.
+
+### Fixed
+* BRIDGE-106: Fixed import of multipart-related messages.
+* BRIDGE-108: Fixed GetInitials when empty username is passed.
+
+
+## Colorado Bridge 3.13.0
+
+### Added
+* BRIDGE-37: added message broadcasting functionality.
+* BRIDGE-122: added observability service.
+* BRIDGE-119: added support for Feature Flags.
+* BRIDGE-116: added command-line switches to enable/disable keychain check on macOS.
+* BRIDGE-88: added context menu for quick actions on input labels: cut, copy, paste.
+
+### Changed
+* BRIDGE-81: KB article suggestion updates + more weight for long keywords.
+
+### Fixed
+* BRIDGE-67: Added detection for username changes on macOS & automatic reconfiguration.
+* BRIDGE-138: Remove deprecated doc.
+
+
 ## Bastei Bridge 3.12.0
 
 ### Added

@@ -18,6 +18,7 @@
 package grpc
 
 import (
+	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/kb"
 	"github.com/bradenaw/juniper/xslices"
 )
@@ -213,7 +214,10 @@ func NewUserBadEvent(userID string, errorMessage string) *StreamEvent {
 }
 
 func NewUsedBytesChangedEvent(userID string, usedBytes uint64) *StreamEvent {
-	return userEvent(&UserEvent{Event: &UserEvent_UsedBytesChangedEvent{UsedBytesChangedEvent: &UsedBytesChangedEvent{UserID: userID, UsedBytes: int64(usedBytes)}}})
+	return userEvent(&UserEvent{Event: &UserEvent_UsedBytesChangedEvent{UsedBytesChangedEvent: &UsedBytesChangedEvent{
+		UserID:    userID,
+		UsedBytes: int64(usedBytes), //nolint:gosec // disable G115
+	}}})
 }
 
 func newIMAPLoginFailedEvent(username string) *StreamEvent {
@@ -247,6 +251,16 @@ func NewRepairStartedEvent() *StreamEvent {
 
 func NewAllUsersLoadedEvent() *StreamEvent {
 	return appEvent(&AppEvent{Event: &AppEvent_AllUsersLoaded{AllUsersLoaded: &AllUsersLoadedEvent{}}})
+}
+
+func NewUserNotificationEvent(event events.UserNotification) *StreamEvent {
+	return appEvent(&AppEvent{Event: &AppEvent_UserNotification{
+		UserNotification: &UserNotificationEvent{
+			UserID:   event.UserID,
+			Title:    event.Title,
+			Subtitle: event.Subtitle,
+			Body:     event.Body,
+		}}})
 }
 
 // Event category factory functions.

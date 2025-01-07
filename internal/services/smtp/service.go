@@ -29,6 +29,7 @@ import (
 	"github.com/ProtonMail/gluon/reporter"
 	"github.com/ProtonMail/go-proton-api"
 	bridgelogging "github.com/ProtonMail/proton-bridge/v3/internal/logging"
+	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/orderedtasks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/sendrecorder"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/userevents"
@@ -37,12 +38,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/pkg/cpc"
 	"github.com/sirupsen/logrus"
 )
-
-type Telemetry interface {
-	useridentity.Telemetry
-	ReportSMTPAuthSuccess(context.Context)
-	ReportSMTPAuthFailed(username string)
-}
 
 type Service struct {
 	userID       string
@@ -56,13 +51,14 @@ type Service struct {
 	bridgePassProvider useridentity.BridgePassProvider
 	keyPassProvider    useridentity.KeyPassProvider
 	identityState      *useridentity.State
-	telemetry          Telemetry
 
 	eventService userevents.Subscribable
 	subscription *userevents.EventChanneledSubscriber
 
 	addressMode   usertypes.AddressMode
 	serverManager ServerManager
+
+	observabilitySender observability.Sender
 }
 
 func NewService(
@@ -73,11 +69,11 @@ func NewService(
 	reporter reporter.Reporter,
 	bridgePassProvider useridentity.BridgePassProvider,
 	keyPassProvider useridentity.KeyPassProvider,
-	telemetry Telemetry,
 	eventService userevents.Subscribable,
 	mode usertypes.AddressMode,
 	identityState *useridentity.State,
 	serverManager ServerManager,
+	observabilitySender observability.Sender,
 ) *Service {
 	subscriberName := fmt.Sprintf("smpt-%v", userID)
 
@@ -95,7 +91,6 @@ func NewService(
 
 		bridgePassProvider: bridgePassProvider,
 		keyPassProvider:    keyPassProvider,
-		telemetry:          telemetry,
 		identityState:      identityState,
 		eventService:       eventService,
 
@@ -103,6 +98,8 @@ func NewService(
 
 		addressMode:   mode,
 		serverManager: serverManager,
+
+		observabilitySender: observabilitySender,
 	}
 }
 

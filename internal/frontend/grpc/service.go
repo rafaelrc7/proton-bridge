@@ -404,6 +404,9 @@ func (s *Service) watchEvents() {
 
 		case events.AllUsersLoaded:
 			_ = s.SendEvent(NewAllUsersLoadedEvent())
+
+		case events.UserNotification:
+			_ = s.SendEvent(NewUserNotificationEvent(event))
 		}
 	}
 }
@@ -462,7 +465,7 @@ func (s *Service) finishLogin() {
 
 		if apiErr := new(proton.APIError); errors.As(err, &apiErr) && apiErr.Code == proton.HumanValidationInvalidToken {
 			s.hvDetails = nil
-			_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, err.Error()))
+			_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, hv.VerificationFailedErrorMsg))
 			return
 		}
 
@@ -581,7 +584,7 @@ func validateServerToken(ctx context.Context, wantToken string) error {
 
 // newUnaryTokenValidator checks the server token for every unary gRPC call.
 func newUnaryTokenValidator(wantToken string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if err := validateServerToken(ctx, wantToken); err != nil {
 			return nil, err
 		}
@@ -592,7 +595,7 @@ func newUnaryTokenValidator(wantToken string) grpc.UnaryServerInterceptor {
 
 // newStreamTokenValidator checks the server token for every gRPC stream request.
 func newStreamTokenValidator(wantToken string) grpc.StreamServerInterceptor {
-	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv interface{}, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if err := validateServerToken(stream.Context(), wantToken); err != nil {
 			return err
 		}
@@ -626,9 +629,7 @@ func (s *Service) monitorParentPID() {
 				go func() {
 					defer async.HandlePanic(s.panicHandler)
 
-					if err := s.quit(); err != nil {
-						logrus.WithError(err).Error("Error on quit")
-					}
+					s.quit()
 				}()
 			}
 
@@ -642,7 +643,10 @@ func (s *Service) monitorParentPID() {
 func (s *Service) handleHvRequest(err error) {
 	hvDet, hvErr := hv.VerifyAndExtractHvRequest(err)
 	if hvErr != nil {
-		_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, hvErr.Error()))
+		_ = s.SendEvent(NewLoginError(LoginErrorType_HV_ERROR, hv.ExtractionErrorMsg))
+		s.bridge.ReportMessageWithContext("Unable to extract HV request details", map[string]any{
+			"error": err.Error(),
+		})
 		return
 	}
 

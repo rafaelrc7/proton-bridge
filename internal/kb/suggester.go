@@ -69,7 +69,11 @@ func GetSuggestionsFromArticleList(userInput string, articles ArticleList) (Arti
 	for _, article := range articles {
 		for _, keyword := range article.Keywords {
 			if strings.Contains(userInput, strings.ToUpper(keyword)) {
-				article.Score++
+				if len(keyword) > 12 {
+					article.Score += 2
+				} else {
+					article.Score++
+				}
 			}
 		}
 	}
@@ -95,7 +99,7 @@ func GetArticleIndex(url string) (uint64, error) {
 	if index == -1 {
 		return 0, ErrArticleNotFound
 	}
-	return uint64(index), nil
+	return uint64(index), nil //nolint:gosec // disable G115
 }
 
 func simplifyUserInput(input string) string {

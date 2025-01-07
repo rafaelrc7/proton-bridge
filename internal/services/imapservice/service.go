@@ -30,6 +30,7 @@ import (
 	"github.com/ProtonMail/gluon/watcher"
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
+	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/orderedtasks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/sendrecorder"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/syncservice"
@@ -44,12 +45,6 @@ import (
 type EventProvider interface {
 	userevents.Subscribable
 	RewindEventID(ctx context.Context, eventID string) error
-}
-
-type Telemetry interface {
-	useridentity.Telemetry
-	SendConfigStatusSuccess(ctx context.Context)
-	ReportConfigStatusFailure(errDetails string)
 }
 
 type GluonIDProvider interface {
@@ -76,7 +71,6 @@ type Service struct {
 	serverManager   IMAPServerManager
 	eventPublisher  events.EventPublisher
 
-	telemetry    Telemetry
 	panicHandler async.PanicHandler
 	sendRecorder *sendrecorder.SendRecorder
 	reporter     reporter.Reporter
@@ -96,6 +90,8 @@ type Service struct {
 	syncConfigPath     string
 	lastHandledEventID string
 	isSyncing          atomic.Bool
+
+	observabilitySender observability.Sender
 }
 
 func NewService(
@@ -109,13 +105,13 @@ func NewService(
 	keyPassProvider useridentity.KeyPassProvider,
 	panicHandler async.PanicHandler,
 	sendRecorder *sendrecorder.SendRecorder,
-	telemetry Telemetry,
 	reporter reporter.Reporter,
 	addressMode usertypes.AddressMode,
 	subscription events.Subscription,
 	syncConfigDir string,
 	maxSyncMemory uint64,
 	showAllMail bool,
+	observabilitySender observability.Sender,
 ) *Service {
 	subscriberName := fmt.Sprintf("imap-%v", identityState.User.ID)
 
@@ -146,7 +142,6 @@ func NewService(
 
 		panicHandler: panicHandler,
 		sendRecorder: sendRecorder,
-		telemetry:    telemetry,
 		reporter:     reporter,
 
 		connectors:    make(map[string]*Connector),
@@ -160,6 +155,8 @@ func NewService(
 		syncMessageBuilder: syncMessageBuilder,
 		syncReporter:       syncReporter,
 		syncConfigPath:     GetSyncConfigPath(syncConfigDir, identityState.User.ID),
+
+		observabilitySender: observabilitySender,
 	}
 }
 
@@ -232,6 +229,12 @@ func (s *Service) OnBadEventResync(ctx context.Context) error {
 
 func (s *Service) OnLogout(ctx context.Context) error {
 	_, err := s.cpc.Send(ctx, &onLogoutReq{})
+
+	return err
+}
+
+func (s *Service) OnDelete(ctx context.Context) error {
+	_, err := s.cpc.Send(ctx, &onDeleteReq{})
 
 	return err
 }
@@ -363,6 +366,11 @@ func (s *Service) run(ctx context.Context) { //nolint gocyclo
 			case *onLogoutReq:
 				s.log.Debug("Logout Request")
 				err := s.removeConnectorsFromServer(ctx, s.connectors, false)
+				req.Reply(ctx, nil, err)
+
+			case *onDeleteReq:
+				s.log.Debug("Delete Request")
+				err := s.removeConnectorsFromServer(ctx, s.connectors, true)
 				req.Reply(ctx, nil, err)
 
 			case *showAllMailReq:
@@ -507,7 +515,6 @@ func (s *Service) buildConnectors() (map[string]*Connector, error) {
 			s.addressMode,
 			s.sendRecorder,
 			s.panicHandler,
-			s.telemetry,
 			s.reporter,
 			s.showAllMail,
 			s.syncStateProvider,
@@ -525,7 +532,6 @@ func (s *Service) buildConnectors() (map[string]*Connector, error) {
 			s.addressMode,
 			s.sendRecorder,
 			s.panicHandler,
-			s.telemetry,
 			s.reporter,
 			s.showAllMail,
 			s.syncStateProvider,
@@ -648,6 +654,8 @@ type onBadEventResyncReq struct{}
 type onLogoutReq struct{}
 
 type showAllMailReq struct{ v bool }
+
+type onDeleteReq struct{}
 
 type setAddressModeReq struct {
 	mode usertypes.AddressMode

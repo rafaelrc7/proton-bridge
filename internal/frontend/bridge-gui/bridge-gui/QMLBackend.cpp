@@ -25,6 +25,7 @@
 #include <bridgepp/GRPC/GRPCClient.h>
 #include <bridgepp/Worker/Overseer.h>
 
+#include "Settings.h"
 
 #define HANDLE_EXCEPTION(x) try { x } \
     catch (Exception const &e) { emit fatalError(e); } \
@@ -59,15 +60,19 @@ QMLBackend::QMLBackend()
 /// \param[in] serviceConfig
 //****************************************************************************************************************************************************
 void QMLBackend::init(GRPCConfig const &serviceConfig) {
+    Log &log = app().log();
+    log.info(QString("Connecting to gRPC service"));
+
     trayIcon_.reset(new TrayIcon());
+    connect(this, &QMLBackend::trayIconVisibleChanged, trayIcon_.get(), &TrayIcon::setVisible);
+    log.info(QString("Tray icon is visible: %1").arg(trayIcon_->isVisible() ? "true" : "false"));
     this->setNormalTrayIcon();
+
 
     connect(this, &QMLBackend::fatalError, &app(), &AppController::onFatalError);
 
     users_ = new UserList(this);
 
-    Log &log = app().log();
-    log.info(QString("Connecting to gRPC service"));
     app().grpc().setLog(&log);
     this->connectGrpcEvents();
 
@@ -298,7 +303,6 @@ void QMLBackend::openExternalLink(QString const &url) {
     HANDLE_EXCEPTION(
         QString const u = url.isEmpty() ? bridgeKBUrl : url;
         QDesktopServices::openUrl(u);
-        emit notifyExternalLinkClicked(u);
     )
 }
 
@@ -732,6 +736,32 @@ void QMLBackend::setDockIconVisible(bool visible) {
 
 
 //****************************************************************************************************************************************************
+/// \param[in] visible Should the tray icon be visible.
+//****************************************************************************************************************************************************
+void QMLBackend::setTrayIconVisible(bool visible) {
+    HANDLE_EXCEPTION(
+        AppController& app = ::app();
+        if (visible == app.settings().trayIconVisible()) {
+            return;
+        }
+        app.settings().setTrayIconVisible(visible);
+        emit trayIconVisibleChanged(visible);
+        app.log().info(QString("Changing tray icon visibility to %1").arg(visible ? "true" : "false"));
+    )
+}
+
+
+//****************************************************************************************************************************************************
+//
+//****************************************************************************************************************************************************
+bool QMLBackend::trayIconVisible() const {
+    HANDLE_EXCEPTION_RETURN_BOOL(
+        return app().settings().trayIconVisible();
+    )
+}
+
+
+//****************************************************************************************************************************************************
 /// \param[in] active Should we activate autostart.
 //****************************************************************************************************************************************************
 void QMLBackend::toggleAutostart(bool active) {
@@ -1065,33 +1095,6 @@ void QMLBackend::sendBadEventUserFeedback(QString const &userID, bool doResync) 
 }
 
 //****************************************************************************************************************************************************
-///
-//****************************************************************************************************************************************************
-void QMLBackend::notifyReportBugClicked() const {
-    HANDLE_EXCEPTION(
-            app().grpc().reportBugClicked();
-    )
-}
-//****************************************************************************************************************************************************
-/// \param[in] client The selected Mail client for autoconfig.
-//****************************************************************************************************************************************************
-void QMLBackend::notifyAutoconfigClicked(QString const &client) const {
-    HANDLE_EXCEPTION(
-            app().grpc().autoconfigClicked(client);
-    )
-}
-
-//****************************************************************************************************************************************************
-/// \param[in] article The url of the KB article.
-//****************************************************************************************************************************************************
-void QMLBackend::notifyExternalLinkClicked(QString const &article) const {
-    HANDLE_EXCEPTION(
-            app().grpc().externalLinkClicked(article);
-    )
-}
-
-
-//****************************************************************************************************************************************************
 //
 //****************************************************************************************************************************************************
 void QMLBackend::setNormalTrayIcon() {
@@ -1330,6 +1333,7 @@ void QMLBackend::connectGrpcEvents() {
     connect(client, &GRPCClient::knowledgeBasSuggestionsReceived, this, &QMLBackend::receivedKnowledgeBaseSuggestions);
     connect(client, &GRPCClient::repairStarted, this, &QMLBackend::repairStarted);
     connect(client, &GRPCClient::allUsersLoaded, this, &QMLBackend::allUsersLoaded);
+    connect(client, &GRPCClient::userNotificationReceived, this, &QMLBackend::processUserNotification);
 
     // cache events
     connect(client, &GRPCClient::cantMoveDiskCache, this, &QMLBackend::cantMoveDiskCache);
@@ -1418,3 +1422,25 @@ void QMLBackend::triggerRepair() const {
             app().grpc().triggerRepair();
     )
 }
+
+//****************************************************************************************************************************************************
+/// \param[in] notification The user notification received from the event loop.
+//****************************************************************************************************************************************************
+void QMLBackend::processUserNotification(bridgepp::UserNotification const& notification) {
+    this->userNotificationStack_.push(notification);
+    trayIcon_->showUserNotification(notification.title, notification.subtitle);
+    emit receivedUserNotification(notification);
+}
+
+void QMLBackend::userNotificationDismissed() {
+    if (!this->userNotificationStack_.size()) return;
+
+    // Remove the user notification from the top of the queue as it has been dismissed.
+    this->userNotificationStack_.pop();
+    if (!this->userNotificationStack_.size()) return;
+
+    // Display the user notification that is on top of the queue, if there is one.
+    auto notification = this->userNotificationStack_.top();
+    emit receivedUserNotification(notification);
+}
+

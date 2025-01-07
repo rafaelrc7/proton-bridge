@@ -56,7 +56,6 @@ type Connector struct {
 
 	identityState sharedIdentity
 	client        APIClient
-	telemetry     Telemetry
 	reporter      reporter.Reporter
 	panicHandler  async.PanicHandler
 	sendRecorder  *sendrecorder.SendRecorder
@@ -70,6 +69,8 @@ type Connector struct {
 	syncState   *SyncState
 }
 
+var errNoSenderAddressMatch = errors.New("no matching sender found in address list")
+
 func NewConnector(
 	addrID string,
 	apiClient APIClient,
@@ -78,7 +79,6 @@ func NewConnector(
 	addressMode usertypes.AddressMode,
 	sendRecorder *sendrecorder.SendRecorder,
 	panicHandler async.PanicHandler,
-	telemetry Telemetry,
 	reporter reporter.Reporter,
 	showAllMail bool,
 	syncState *SyncState,
@@ -94,7 +94,6 @@ func NewConnector(
 		attrs:         defaultMailboxAttributes(),
 
 		client:       apiClient,
-		telemetry:    telemetry,
 		reporter:     reporter,
 		panicHandler: panicHandler,
 		sendRecorder: sendRecorder,
@@ -108,6 +107,7 @@ func NewConnector(
 		labels:      labels,
 		addressMode: addressMode,
 		log: logrus.WithFields(logrus.Fields{
+			"pkg":             "imapservice",
 			"gluon-connector": addressMode,
 			"addr-id":         addrID,
 			"user-id":         userID,
@@ -166,18 +166,15 @@ func (s *Connector) Init(ctx context.Context, cache connector.IMAPState) error {
 	})
 }
 
-func (s *Connector) Authorize(ctx context.Context, username string, password []byte) bool {
+func (s *Connector) Authorize(_ context.Context, username string, password []byte) bool {
 	addrID, err := s.identityState.CheckAuth(username, password)
 	if err != nil {
-		s.telemetry.ReportConfigStatusFailure("IMAP " + err.Error())
 		return false
 	}
 
 	if s.addressMode == usertypes.AddressModeSplit && addrID != s.addrID {
 		return false
 	}
-
-	s.telemetry.SendConfigStatusSuccess(ctx)
 
 	return true
 }
@@ -677,22 +674,18 @@ func (s *Connector) importMessage(
 ) (imap.Message, []byte, error) {
 	var full proton.FullMessage
 
-	// addr is primary for combined mode or active for split mode
-	addr, ok := s.identityState.GetAddress(s.addrID)
-	if !ok {
-		return imap.Message{}, nil, fmt.Errorf("could not find address")
-	}
-
 	p, err2 := parser.New(bytes.NewReader(literal))
 	if err2 != nil {
 		return imap.Message{}, nil, fmt.Errorf("failed to parse literal: %w", err2)
 	}
 
 	isDraft := slices.Contains(labelIDs, proton.DraftsLabel)
+	addr, err := s.getImportAddress(p, isDraft)
+	if err != nil {
+		return imap.Message{}, nil, err
+	}
 
-	s.reportGODT3185(isDraft, addr.Email, p, s.addressMode == usertypes.AddressModeCombined)
-
-	if err := s.identityState.WithAddrKR(s.addrID, func(_, addrKR *crypto.KeyRing) error {
+	if err := s.identityState.WithAddrKR(addr.ID, func(_, addrKR *crypto.KeyRing) error {
 		primaryKey, errKey := addrKR.FirstKey()
 		if errKey != nil {
 			return fmt.Errorf("failed to get primary key for import: %w", errKey)
@@ -719,7 +712,7 @@ func (s *Connector) importMessage(
 			}
 			str, err := s.client.ImportMessages(ctx, primaryKey, 1, 1, []proton.ImportReq{{
 				Metadata: proton.ImportMetadata{
-					AddressID: s.addrID,
+					AddressID: addr.ID,
 					LabelIDs:  labelIDs,
 					Unread:    proton.Bool(unread),
 					Flags:     flags,
@@ -878,79 +871,74 @@ func equalAddresses(a, b string) bool {
 	return strings.EqualFold(stripPlusAlias(a), stripPlusAlias(b))
 }
 
-func (s *Connector) reportGODT3185(isDraft bool, defaultAddr string, p *parser.Parser, isCombinedMode bool) {
-	reportAction := "draft"
-	if !isDraft {
-		reportAction = "import"
+func (s *Connector) getImportAddress(p *parser.Parser, isDraft bool) (proton.Address, error) {
+	// addr is primary for combined mode or active for split mode
+	address, ok := s.identityState.GetAddress(s.addrID)
+	if !ok {
+		return proton.Address{}, errors.New("could not find account address")
 	}
 
-	reportMode := "combined"
-	if !isCombinedMode {
-		reportMode = "split"
+	inCombinedMode := s.addressMode == usertypes.AddressModeCombined
+	if !inCombinedMode {
+		return address, nil
 	}
 
-	senderAddr := ""
-	if p != nil && p.Root() != nil && p.Root().Header.Len() != 0 {
-		addrField := p.Root().Header.Get("From")
-		if addrField == "" {
-			addrField = p.Root().Header.Get("Sender")
-		}
-		if addrField != "" {
-			sender, err := rfc5322.ParseAddressList(addrField)
-			if err == nil && len(sender) > 0 {
-				senderAddr = sender[0].Address
-			} else {
-				s.log.WithError(err).Warn("Invalid sender address in reporter")
-			}
-		}
-	}
-
-	if equalAddresses(defaultAddr, senderAddr) {
-		return
-	}
-
-	isDisabled := false
-	isUserAddress := false
-	for _, a := range s.identityState.GetAddresses() {
-		if !equalAddresses(a.Email, senderAddr) {
-			continue
+	senderAddr, err := s.getSenderProtonAddress(p)
+	if err != nil {
+		if !errors.Is(err, errNoSenderAddressMatch) {
+			s.log.WithError(err).Warn("Could not get import address")
 		}
 
-		isUserAddress = true
-		isDisabled = !bool(a.Send) || (a.Status != proton.AddressStatusEnabled)
-		break
+		// We did not find a match, so we use the default address.
+		return address, nil
 	}
 
-	if !isUserAddress && senderAddr != "" {
-		return
+	if senderAddr.ID == address.ID {
+		return address, nil
 	}
 
-	reportResult := "using sender address"
+	// GODT-3185 / BRIDGE-120 In combined mode, in certain cases we adapt the address used for encryption.
+	// - draft with non-default address in combined mode: using sender address
+	// - import with non-default address in combined mode: using sender address
+	// - import with non-default disabled address in combined mode: using sender address
 
-	if !isCombinedMode {
-		reportResult = "error address not match"
+	isSenderAddressDisabled := (!bool(senderAddr.Send)) || (senderAddr.Status != proton.AddressStatusEnabled)
+	if isDraft && isSenderAddressDisabled {
+		return address, nil
 	}
 
-	reportAddress := ""
-	if senderAddr == "" {
-		reportAddress = " invalid"
-		reportResult = "error import/draft"
+	return senderAddr, nil
+}
+
+func (s *Connector) getSenderProtonAddress(p *parser.Parser) (proton.Address, error) {
+	// Step 1: extract sender email address from message
+	if (p == nil) || (p.Root() == nil) || (p.Root().Header.Len() == 0) {
+		return proton.Address{}, errors.New("invalid message encountered while trying to extract sender address")
 	}
 
-	if isDisabled {
-		reportAddress = " disabled"
-		if isDraft {
-			reportResult = "error draft"
-		}
+	addrField := p.Root().Header.Get("From")
+	if len(addrField) == 0 {
+		addrField = p.Root().Header.Get("Sender")
+	}
+	if len(addrField) == 0 {
+		return proton.Address{}, errors.New("no sender found in message headers")
 	}
 
-	report := fmt.Sprintf(
-		"GODT-3185: %s with non-default%s address in %s mode: %s",
-		reportAction, reportAddress, reportMode, reportResult,
-	)
-
-	s.log.Warn(report)
-	if s.reporter != nil {
-		_ = s.reporter.ReportMessage(report)
+	sender, err := rfc5322.ParseAddressList(addrField)
+	if (err != nil) || (len(sender) == 0) {
+		return proton.Address{}, fmt.Errorf("invalid sender address in message: %w", err)
 	}
+
+	addrStr := sender[0].Address
+
+	// Step 2: match email with the user address list.
+	addressList := s.identityState.GetAddresses()
+	index := slices.IndexFunc(addressList, func(a proton.Address) bool {
+		return equalAddresses(a.Email, addrStr)
+	})
+	if index < 0 {
+		return proton.Address{}, errNoSenderAddressMatch
+	}
+
+	return addressList[index], nil
 }

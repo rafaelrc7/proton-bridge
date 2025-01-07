@@ -28,11 +28,12 @@ type Locator interface {
 	ProvideLogsPath() (string, error)
 	ProvideGluonCachePath() (string, error)
 	ProvideGluonDataPath() (string, error)
-	ProvideStatsPath() (string, error)
 	GetLicenseFilePath() string
 	GetDependencyLicensesLink() string
 	Clear(...string) error
 	ProvideIMAPSyncConfigPath() (string, error)
+	ProvideUnleashCachePath() (string, error)
+	ProvideNotificationsCachePath() (string, error)
 }
 
 type ProxyController interface {
